@@ -41,4 +41,4 @@ Fields: `title` (3–120), `slug` (unique, `[a-z0-9-]`, auto-generated if omitte
 ## Security measures (assignment “ИПР 1”)
 
 Mandatory: Helmet, global rate limiting, input validation (Joi) on every endpoint, ORM (parameterised SQL), logging of suspicious actions (`logs/security.log`), role guard.
-Additional (from the assignment table): **#3** password complexity · **#5** access JWT + refresh token in httpOnly cookie (rotation, reuse detection) · **#6** lock after 5 failed logins for 15 min · **#9** mass-assignment protection (unknown fields rejected) · **#22** CORS white list · **#24** generic errors in production.
+Additional (from the assignment table): **#3** password complexity · **#5** access JWT + refresh token in httpOnly cookie (rotation, reuse detection) · **#6** lock after 5 failed logins for 15 min · **#9** mass-assignment protection (unknown fields rejected) · **#19** HTML tags are stripped from free-text fields (`nickname`, quiz `title`, `description`, `category`) before validation and storage · **#22** CORS white list · **#24** generic errors in production.
