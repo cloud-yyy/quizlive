@@ -2,6 +2,8 @@
 
 Курсовой проект по дисциплине «Интернет-технологии и веб-программирование» (БГУИР, дистанционная форма).
 
+Ветка `kr21` — контрольная работа №1 «Серверная разработка»: REST API на Node.js + Express + Sequelize (PostgreSQL), JWT, роли, основная сущность `Quiz` (квиз) с вложенными вопросами и вариантами, фильтры, поиск и статистика (`GET /quizzes`, `GET /quizzes/stats`).
+
 ## Запуск (Docker)
 
 ```bash
@@ -12,6 +14,7 @@ docker compose up -d --build
 | Сервис | Адрес |
 |---|---|
 | API | http://localhost:4000 (`/health`) |
+| Swagger UI | http://localhost:4000/docs |
 | PostgreSQL | localhost:5433 (`quiz` / `quiz`, база `quizlive`) |
 
 Администратор создаётся автоматически из `ADMIN_EMAIL` / `ADMIN_PASSWORD` (по умолчанию `admin@quizlive.local` / `Admin#12345`).
