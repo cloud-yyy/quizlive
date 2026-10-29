@@ -6,6 +6,16 @@ afterAll(() => sequelize.close());
 const create = (a, body = {}) =>
   request(app).post('/quizzes').set('Authorization', a.bearer).send({ title: 'World capitals', ...body });
 
+const q1 = { text: 'Capital of France?', type: 'single', options: [{ text: 'Paris', isCorrect: true }, { text: 'Rome' }] };
+
+/** Creates a quiz, gives it one question and publishes it. */
+async function published(a, body = {}) {
+  const quiz = (await create(a, body)).body.quiz;
+  await request(app).post(`/quizzes/${quiz.id}/questions`).set('Authorization', a.bearer).send(q1);
+  const res = await request(app).put(`/quizzes/${quiz.id}`).set('Authorization', a.bearer).send({ status: 'published' });
+  return res.body.quiz;
+}
+
 describe('Quiz CRUD with role-based access', () => {
   it('requires authentication to create', async () => {
     expect((await request(app).post('/quizzes').send({ title: 'No auth' })).status).toBe(401);
@@ -39,7 +49,7 @@ describe('Quiz CRUD with role-based access', () => {
     const other = await actor();
     const mod = await actor('moderator');
     const draft = (await create(owner, { title: 'Secret draft' })).body.quiz;
-    const pub = (await create(owner, { title: 'Open quiz', status: 'published' })).body.quiz;
+    const pub = await published(owner, { title: 'Open quiz' });
 
     expect((await request(app).get(`/quizzes/${draft.id}`)).status).toBe(404);
     expect((await request(app).get(`/quizzes/${draft.id}`).set('Authorization', other.bearer)).status).toBe(404);
@@ -59,7 +69,7 @@ describe('Quiz CRUD with role-based access', () => {
     const owner = await actor();
     const other = await actor();
     const admin = await actor('admin');
-    const quiz = (await create(owner, { status: 'published' })).body.quiz;
+    const quiz = await published(owner);
 
     expect((await request(app).put(`/quizzes/${quiz.id}`).set('Authorization', other.bearer).send({ title: 'Hacked' })).status).toBe(403);
     expect((await request(app).delete(`/quizzes/${quiz.id}`).set('Authorization', other.bearer)).status).toBe(403);
@@ -76,7 +86,7 @@ describe('Quiz CRUD with role-based access', () => {
   it('moderation: only moderator/admin can hide; hidden quizzes disappear from the public list', async () => {
     const owner = await actor();
     const mod = await actor('moderator');
-    const quiz = (await create(owner, { status: 'published' })).body.quiz;
+    const quiz = await published(owner);
 
     expect((await request(app).patch(`/quizzes/${quiz.id}/moderation`).set('Authorization', owner.bearer).send({ status: 'hidden' })).status).toBe(403);
     const res = await request(app).patch(`/quizzes/${quiz.id}/moderation`).set('Authorization', mod.bearer).send({ status: 'hidden' });
@@ -88,7 +98,7 @@ describe('Quiz CRUD with role-based access', () => {
   it('owner cannot re-publish a quiz hidden by a moderator', async () => {
     const owner = await actor();
     const mod = await actor('moderator');
-    const quiz = (await create(owner, { status: 'published' })).body.quiz;
+    const quiz = await published(owner);
     await request(app).patch(`/quizzes/${quiz.id}/moderation`).set('Authorization', mod.bearer).send({ status: 'hidden' });
 
     const republish = await request(app).put(`/quizzes/${quiz.id}`).set('Authorization', owner.bearer).send({ status: 'published' });
@@ -106,11 +116,23 @@ describe('Quiz CRUD with role-based access', () => {
 
   it('paginates the list', async () => {
     const owner = await actor();
-    for (let i = 0; i < 3; i += 1) await create(owner, { title: `Paged quiz ${i}`, status: 'published' });
+    for (let i = 0; i < 3; i += 1) await published(owner, { title: `Paged quiz ${i}` });
     const res = await request(app).get('/quizzes?limit=2&page=1');
     expect(res.status).toBe(200);
     expect(res.body.items).toHaveLength(2);
     expect(res.body.total).toBeGreaterThanOrEqual(3);
     expect((await request(app).get('/quizzes?limit=1000')).status).toBe(400);
+  });
+});
+
+describe('API documentation', () => {
+  it('serves the OpenAPI document and Swagger UI', async () => {
+    const spec = await request(app).get('/openapi.json');
+    expect(spec.status).toBe(200);
+    expect(spec.body.openapi).toMatch(/^3\./);
+    expect(Object.keys(spec.body.paths)).toEqual(expect.arrayContaining(['/auth/login', '/quizzes', '/quizzes/{id}/questions', '/quizzes/stats']));
+    const ui = await request(app).get('/docs/');
+    expect(ui.status).toBe(200);
+    expect(ui.text).toContain('swagger');
   });
 });

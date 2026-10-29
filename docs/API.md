@@ -38,6 +38,30 @@ Fields: `title` (3–120), `slug` (unique, `[a-z0-9-]`, auto-generated if omitte
 | DELETE | `/quizzes/:id` | owner / admin | `204`. |
 | PATCH | `/quizzes/:id/moderation` | moderator+ | `{ status: published|hidden }`. |
 
+### Search, filters, statistics (assignment “КР 1”)
+
+`GET /quizzes` query: `q` (case-insensitive search in title/description), `category`, `difficulty`, `status`, `mine=true`, `sort=newest|oldest|title|questions`, `page`, `limit`. Each item has `questionCount`.
+
+| Method | Path | Access | Description |
+|---|---|---|---|
+| GET | `/quizzes/stats` | public | `{ total, totalQuestions, byCategory[], byDifficulty[] }` of the published library. |
+| GET | `/quizzes/categories` | public | Distinct categories (for filters). |
+
+## Questions
+
+Types: `single` (exactly 1 correct), `multiple` (≥ 1 correct), `truefalse` (2 options, 1 correct). 2–6 options, unique texts. `timeLimitSec` 5–120 (default 20), `points` 100–5000 (default 1000).
+
+| Method | Path | Access | Description |
+|---|---|---|---|
+| GET | `/quizzes/:id/questions` | owner / admin | Questions with options and correct answers. |
+| POST | `/quizzes/:id/questions` | owner / admin | `{ text, type?, timeLimitSec?, points?, options[] }` → `201`. |
+| PUT | `/questions/:id` | owner / admin | Partial update; options are replaced when provided. |
+| DELETE | `/questions/:id` | owner / admin | `204`; the last question of a published quiz cannot be deleted (`409`). |
+
+`GET /quizzes/:id` includes questions; `isCorrect` is stripped for everyone except the owner and staff. A quiz can be published only with ≥ 1 question.
+
+Interactive documentation: **Swagger UI at `/docs`**, raw spec at `/openapi.json`.
+
 ## Security measures (assignment “ИПР 1”)
 
 Mandatory: Helmet, global rate limiting, input validation (Joi) on every endpoint, ORM (parameterised SQL), logging of suspicious actions (`logs/security.log`), role guard.

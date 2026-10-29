@@ -2,7 +2,9 @@ const express = require('express');
 const helmet = require('helmet');
 const cors = require('cors');
 const cookieParser = require('cookie-parser');
+const swaggerUi = require('swagger-ui-express');
 const config = require('./config');
+const openapi = require('./docs/openapi');
 const { globalLimiter } = require('./middleware/rateLimit');
 const { notFoundHandler, errorHandler } = require('./middleware/errorHandler');
 const { logger, security } = require('./utils/logger');
@@ -36,9 +38,12 @@ if (!config.isTest) {
 }
 
 app.get('/health', (req, res) => res.json({ status: 'ok' }));
+app.use('/docs', swaggerUi.serve, swaggerUi.setup(openapi, { customSiteTitle: 'QuizLive API docs' }));
+app.get('/openapi.json', (req, res) => res.json(openapi));
 app.use('/auth', require('./routes/auth'));
 app.use('/users', require('./routes/users'));
 app.use('/quizzes', require('./routes/quizzes'));
+app.use('/questions', require('./routes/questions'));
 
 app.use(notFoundHandler);
 app.use(errorHandler);
