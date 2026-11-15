@@ -38,5 +38,15 @@ services:
       db:
         condition: service_healthy
 
+  web:
+    build:
+      context: ./client
+      args:
+        VITE_API_URL: ""
+    ports:
+      - "8080:80"
+    depends_on:
+      - server
+
 volumes:
   pgdata:

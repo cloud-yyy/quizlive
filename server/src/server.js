@@ -1,3 +1,7 @@
+const { initSentry } = require('./utils/monitoring');
+
+initSentry();
+
 const http = require('http');
 const app = require('./app');
 const config = require('./config');

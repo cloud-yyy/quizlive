@@ -8,12 +8,14 @@ const openapi = require('./docs/openapi');
 const { globalLimiter } = require('./middleware/rateLimit');
 const { notFoundHandler, errorHandler } = require('./middleware/errorHandler');
 const { logger, security } = require('./utils/logger');
+const { requestCounter } = require('./utils/metrics');
 
 const app = express();
 
-app.set('trust proxy', 1);
+app.set('trust proxy', config.trustProxy);
 app.disable('x-powered-by');
 
+app.use(requestCounter);
 app.use(helmet());
 app.use(
   cors({
@@ -32,12 +34,21 @@ app.use(cookieParser());
 
 if (!config.isTest) {
   app.use((req, res, next) => {
-    res.on('finish', () => logger.debug(`${req.method} ${req.originalUrl} ${res.statusCode}`));
+    const started = Date.now();
+    res.on('finish', () => {
+      // 4xx (bad requests) are kept in production logs as warnings, 5xx as errors.
+      const level = res.statusCode >= 500 ? 'error' : res.statusCode >= 400 ? 'warn' : 'debug';
+      logger.log(level, `${req.method} ${req.originalUrl} ${res.statusCode}`, {
+        status: res.statusCode,
+        durationMs: Date.now() - started,
+        ip: req.ip,
+      });
+    });
     next();
   });
 }
 
-app.get('/health', (req, res) => res.json({ status: 'ok' }));
+app.use(require('./routes/system'));
 app.use('/docs', swaggerUi.serve, swaggerUi.setup(openapi, { customSiteTitle: 'QuizLive API docs' }));
 app.get('/openapi.json', (req, res) => res.json(openapi));
 app.use('/auth', require('./routes/auth'));

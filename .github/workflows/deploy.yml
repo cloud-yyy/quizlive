@@ -1,0 +1,123 @@
+name: CI/CD
+
+# Every push runs lint + tests + build; pushes to main / ipr22 are also deployed
+# to the VPS automatically. Result goes to Telegram.
+on:
+  push:
+    branches: [main, ipr22, kr22]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  server:
+    name: Server – lint & tests
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: quiz
+          POSTGRES_PASSWORD: quiz
+          POSTGRES_DB: quizlive_test
+        ports: ["5433:5432"]
+        options: >-
+          --health-cmd "pg_isready -U quiz" --health-interval 5s --health-timeout 5s --health-retries 10
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: server/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm test
+
+  client:
+    name: Client – lint & build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: client
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: client/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run build
+
+  docker:
+    name: Docker images build
+    runs-on: ubuntu-latest
+    needs: [server, client]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build production images
+        run: docker compose -f docker-compose.prod.yml build server web
+        env:
+          POSTGRES_USER: ci
+          POSTGRES_PASSWORD: ci
+          POSTGRES_DB: ci
+
+  deploy:
+    name: Deploy to VPS (docker compose)
+    runs-on: ubuntu-latest
+    needs: [docker]
+    if: github.event_name == 'push' && (github.ref_name == 'main' || github.ref_name == 'ipr22')
+    environment:
+      name: production
+      url: https://quizlive.cloudyyy.tech
+    steps:
+      # The key may only run deploy/deploy.sh on the server (forced command in authorized_keys).
+      - name: Deploy over SSH
+        env:
+          SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          KNOWN_HOSTS: ${{ vars.VPS_KNOWN_HOSTS }}
+          HOST: ${{ vars.VPS_HOST }}
+          PORT: ${{ vars.VPS_PORT }}
+          USER: ${{ vars.VPS_USER }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy_key && chmod 600 ~/.ssh/deploy_key
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          ssh -i ~/.ssh/deploy_key -p "$PORT" -o StrictHostKeyChecking=yes "$USER@$HOST" "deploy ${GITHUB_REF_NAME}"
+
+      - name: Smoke test over HTTPS
+        run: |
+          curl -fsS --retry 5 --retry-delay 5 --retry-all-errors https://quizlive.cloudyyy.tech/api/health
+          curl -fsS -o /dev/null https://quizlive.cloudyyy.tech/
+
+  notify:
+    name: Telegram notification
+    runs-on: ubuntu-latest
+    needs: [server, client, docker, deploy]
+    if: always() && github.event_name == 'push'
+    steps:
+      - name: Send build status to Telegram
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ vars.TELEGRAM_CHAT_ID }}
+          RESULTS: ${{ join(needs.*.result, ',') }}
+          COMMIT_MSG: ${{ github.event.head_commit.message }}
+        run: |
+          if [ -z "$TELEGRAM_BOT_TOKEN" ] || [ -z "$TELEGRAM_CHAT_ID" ]; then echo "Telegram secrets are not set – skipping"; exit 0; fi
+          if echo ",$RESULTS," | grep -qE ",(failure|cancelled),"; then ICON="❌ FAILED"; else ICON="✅ SUCCESS"; fi
+          TEXT="$ICON QuizLive CI/CD
+          Branch: ${{ github.ref_name }}
+          Commit: ${GITHUB_SHA::7} ${COMMIT_MSG%%$'\n'*}
+          Jobs: lint+tests ${{ needs.server.result }}, client ${{ needs.client.result }}, docker ${{ needs.docker.result }}, deploy ${{ needs.deploy.result }}
+          Author: ${{ github.actor }}
+          Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+            --data-urlencode "chat_id=${TELEGRAM_CHAT_ID}" --data-urlencode "text=${TEXT}" > /dev/null

@@ -13,6 +13,25 @@ const devFormat = combine(
   }),
 );
 
+/**
+ * Optional log shipping to Grafana Loki (self-hosted on the same VPS).
+ * Enabled only when LOKI_URL is set, so local runs and tests need no Loki.
+ */
+function lokiTransport(name) {
+  if (!process.env.LOKI_URL || config.isTest) return null;
+  const LokiTransport = require('winston-loki');
+  return new LokiTransport({
+    host: process.env.LOKI_URL,
+    labels: { app: 'quizlive', env: config.nodeEnv, stream: name },
+    json: true,
+    format: combine(timestamp(), json()),
+    batching: true,
+    interval: 5,
+    replaceTimestamp: true,
+    onConnectionError: (err) => console.error('Loki connection error:', err && err.message), // eslint-disable-line no-console
+  });
+}
+
 function build(name) {
   const transports = [
     new winston.transports.Console({
@@ -31,6 +50,8 @@ function build(name) {
       }),
     );
   }
+  const loki = lokiTransport(name);
+  if (loki) transports.push(loki);
   return winston.createLogger({ level: config.isProd ? 'info' : 'debug', transports });
 }
 
