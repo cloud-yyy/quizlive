@@ -13,6 +13,8 @@ module.exports = {
   isProd,
   isTest: nodeEnv === 'test',
   port: Number(env.PORT) || 4000,
+  // Number of reverse proxies in front of the API (web nginx = 1; on the VPS host nginx + web nginx = 2).
+  trustProxy: Number(env.TRUST_PROXY) || 1,
   databaseUrl: env.DATABASE_URL || 'postgres://quiz:quiz@localhost:5433/quizlive',
   databaseSsl: env.DATABASE_SSL === 'true',
   jwtSecret: env.JWT_SECRET || 'dev-access-secret-change-me',

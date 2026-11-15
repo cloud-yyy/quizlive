@@ -1,11 +1,11 @@
 const config = require('../config');
 const { logger } = require('../utils/logger');
+const { captureException } = require('../utils/monitoring');
 
 function notFoundHandler(req, res) {
   res.status(404).json({ error: { code: 'not_found', message: `Route ${req.method} ${req.path} not found` } });
 }
 
-// eslint-disable-next-line no-unused-vars
 function errorHandler(err, req, res, next) {
   let status = err.status || err.statusCode || 500;
   let code = err.code && typeof err.code === 'string' && err.expose ? err.code : undefined;
@@ -33,6 +33,7 @@ function errorHandler(err, req, res, next) {
   }
 
   if (status >= 500) {
+    captureException(err);
     logger.error(err.message, { stack: err.stack, path: req.originalUrl, method: req.method });
     // Generic errors in production: never leak implementation details.
     if (config.isProd) message = 'Internal server error';
